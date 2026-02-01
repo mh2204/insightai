@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+@theme {
+  --color-apple-gray: #f5f5f7;
+  --color-electric-blue: #007AFF;
+
+  /* Retain standard overridden/extended colors if they differ, or just use keys */
+  /* Re-defining provided colors like indigo-600 is usually not needed unless changing the shade, 
+     but we'll add them to be safe if they were intended as custom specific shades. 
+     The config had #4F46E5 which is standard indigo-600. #10B981 is standard emerald-500.
+     So we barely need to define them, but for 'electric-blue' we do.
+  */
+
+  --font-sans: "Inter", system-ui, sans-serif;
+  --radius-2xl: 1rem;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-apple-gray);
+    @apply text-slate-900 font-sans antialiased;
+  }
+}
