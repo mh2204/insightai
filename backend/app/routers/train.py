@@ -9,7 +9,8 @@ from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.metrics import accuracy_score, f1_score, r2_score, mean_squared_error
 import xgboost as xgb
 import uuid
-from .data import DATASETS, clean_nan
+from .data import clean_nan
+from app.core.store import DATASETS
 
 router = APIRouter(
     prefix="/train",

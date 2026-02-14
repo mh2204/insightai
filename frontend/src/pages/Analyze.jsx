@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import FileUpload from '../components/FileUpload';
 import axios from 'axios';
 import { motion } from 'framer-motion';
 import {
     PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
-    BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend
+    BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend,
+    ScatterChart, Scatter, ZAxis
 } from 'recharts';
 
 const COLORS = ['#007AFF', '#5856D6', '#FF2D55', '#FF9500', '#FFCC00', '#4CD964'];
@@ -15,21 +16,47 @@ const Analyze = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
 
-    React.useEffect(() => {
+    // Scatter plot state
+    const [scatterX, setScatterX] = useState('');
+    const [scatterY, setScatterY] = useState('');
+    const [scatterData, setScatterData] = useState([]);
+
+    useEffect(() => {
         const storedId = localStorage.getItem('dataset_id');
         if (storedId) {
             setDatasetId(storedId);
-            // Optionally fetch profile if ID exists
-            axios.get(`http://localhost:8000/data/profile/${storedId}`)
-                .then(res => setProfile(res.data))
-                .catch(err => console.error(err));
+            fetchProfile(storedId);
         }
     }, []);
+
+    const fetchProfile = (id) => {
+        axios.get(`http://localhost:8000/data/profile/${id}`)
+            .then(res => {
+                setProfile(res.data);
+                // Set default scatter axes if numeric columns exist
+                const numericCols = Object.keys(res.data.dtypes).filter(col =>
+                    res.data.dtypes[col].includes('int') || res.data.dtypes[col].includes('float')
+                );
+                if (numericCols.length >= 2) {
+                    setScatterX(numericCols[0]);
+                    setScatterY(numericCols[1]);
+                }
+            })
+            .catch(err => console.error(err));
+    };
+
+    useEffect(() => {
+        if (datasetId && scatterX && scatterY) {
+            axios.get(`http://localhost:8000/data/scatter/${datasetId}?x=${scatterX}&y=${scatterY}`)
+                .then(res => setScatterData(res.data))
+                .catch(err => console.error(err));
+        }
+    }, [datasetId, scatterX, scatterY]);
 
     const handleUpload = async (file) => {
         setLoading(true);
         setError(null);
-        // ... (upload logic stays same, simplifiying for diff if possible but creating full replacement for safety)
+
         const formData = new FormData();
         formData.append('file', file);
 
@@ -41,8 +68,7 @@ const Analyze = () => {
             setDatasetId(id);
             localStorage.setItem('dataset_id', id);
 
-            const profileRes = await axios.get(`http://localhost:8000/data/profile/${id}`);
-            setProfile(profileRes.data);
+            fetchProfile(id);
         } catch (err) {
             console.error(err);
             setError("Failed to upload or analyze dataset. Ensure backend is running.");
@@ -65,6 +91,19 @@ const Analyze = () => {
         .filter(([_, count]) => count > 0)
         .map(([name, value]) => ({ name, value }))
         : [];
+
+    const getCorrelationColor = (value) => {
+        const val = Math.abs(value);
+        if (val >= 0.8) return 'bg-blue-600 text-white';
+        if (val >= 0.6) return 'bg-blue-400 text-white';
+        if (val >= 0.4) return 'bg-blue-200 text-gray-800';
+        if (val >= 0.2) return 'bg-blue-50 text-gray-800';
+        return 'bg-gray-50 text-gray-400';
+    };
+
+    const numericColumns = profile ? Object.keys(profile.dtypes).filter(col =>
+        String(profile.dtypes[col]).includes('int') || String(profile.dtypes[col]).includes('float')
+    ) : [];
 
     return (
         <div className="space-y-8">
@@ -106,7 +145,7 @@ const Analyze = () => {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ staggerChildren: 0.1 }}
-                    className="space-y-6"
+                    className="space-y-8"
                 >
                     {/* Key Metrics Row */}
                     <motion.div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -185,6 +224,75 @@ const Analyze = () => {
                             )}
                         </motion.div>
                     </div>
+
+                    {/* Correlation Heatmap */}
+                    {profile.correlations && (
+                        <motion.div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-x-auto">
+                            <h3 className="text-lg font-semibold text-gray-900 mb-4">Correlation Matrix</h3>
+                            <div className="min-w-max">
+                                <div className="flex">
+                                    <div className="w-24"></div>
+                                    {Object.keys(profile.correlations).map(col => (
+                                        <div key={col} className="w-24 text-xs font-medium text-gray-500 text-center rotate-45 origin-bottom-left transform translate-x-4 mb-8">
+                                            {col.length > 10 ? col.substring(0, 10) + '...' : col}
+                                        </div>
+                                    ))}
+                                </div>
+                                {Object.keys(profile.correlations).map(row => (
+                                    <div key={row} className="flex items-center">
+                                        <div className="w-24 text-xs font-medium text-gray-500 truncate" title={row}>{row}</div>
+                                        {Object.keys(profile.correlations).map(col => {
+                                            const val = profile.correlations[row][col];
+                                            return (
+                                                <div
+                                                    key={`${row}-${col}`}
+                                                    className={`w-24 h-12 flex items-center justify-center text-xs font-semibold ${getCorrelationColor(val)}`}
+                                                    title={`${row} vs ${col}: ${val.toFixed(2)}`}
+                                                >
+                                                    {val.toFixed(2)}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                ))}
+                            </div>
+                        </motion.div>
+                    )}
+
+                    {/* Scatter Plot Section */}
+                    <motion.div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-lg font-semibold text-gray-900">Variable Relationship Explorer</h3>
+                            <div className="flex space-x-4">
+                                <select
+                                    className="border rounded-md px-3 py-1 text-sm text-gray-700"
+                                    value={scatterX}
+                                    onChange={(e) => setScatterX(e.target.value)}
+                                >
+                                    {numericColumns.map(col => <option key={col} value={col}>{col}</option>)}
+                                </select>
+                                <span className="text-gray-400">vs</span>
+                                <select
+                                    className="border rounded-md px-3 py-1 text-sm text-gray-700"
+                                    value={scatterY}
+                                    onChange={(e) => setScatterY(e.target.value)}
+                                >
+                                    {numericColumns.map(col => <option key={col} value={col}>{col}</option>)}
+                                </select>
+                            </div>
+                        </div>
+                        <div className="h-80 w-full">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                                    <CartesianGrid />
+                                    <XAxis type="number" dataKey={scatterX} name={scatterX} label={{ value: scatterX, position: 'insideBottomRight', offset: -10 }} />
+                                    <YAxis type="number" dataKey={scatterY} name={scatterY} label={{ value: scatterY, angle: -90, position: 'insideLeft' }} />
+                                    <Tooltip cursor={{ strokeDasharray: '3 3' }} />
+                                    <Scatter name="Data Points" data={scatterData} fill="#007AFF" />
+                                </ScatterChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </motion.div>
 
                     {/* Detailed Stats Grid */}
                     <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-hidden">

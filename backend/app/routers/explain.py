@@ -4,7 +4,8 @@ import pandas as pd
 import numpy as np
 import shap
 from .train import MODELS
-from .data import DATASETS, clean_nan
+from .data import clean_nan
+from app.core.store import DATASETS
 
 router = APIRouter(
     prefix="/explain",

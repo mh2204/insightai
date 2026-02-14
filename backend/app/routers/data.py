@@ -11,8 +11,7 @@ router = APIRouter(
     responses={404: {"description": "Not found"}},
 )
 
-# In-memory storage for simple demo purposes (production would use a database or S3)
-DATASETS = {}
+from app.core.store import DATASETS
 
 @router.post("/upload")
 async def upload_dataset(file: UploadFile = File(...)):
@@ -94,3 +93,27 @@ async def profile_dataset(dataset_id: str):
         profile["correlations"] = numeric_df.corr().fillna(0).to_dict()
     
     return clean_nan(profile)
+
+@router.get("/scatter/{dataset_id}")
+async def get_scatter_data(dataset_id: str, x: str, y: str):
+    """
+    Return x and y values for a scatter plot.
+    Limit to 1000 points for performance.
+    """
+    if dataset_id not in DATASETS:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    
+    df = DATASETS[dataset_id]["data"]
+    
+    if x not in df.columns or y not in df.columns:
+        raise HTTPException(status_code=400, detail="Columns not found")
+    
+    # Sample if too large
+    if len(df) > 1000:
+        plot_df = df[[x, y]].sample(1000)
+    else:
+        plot_df = df[[x, y]]
+        
+    data = plot_df.to_dict(orient="records")
+    # key mapping to ensure frontend reusability if needed, but records are {x: val, y: val}
+    return clean_nan(data)
